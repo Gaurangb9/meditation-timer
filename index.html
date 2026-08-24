@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Meditation Timer</title>
+
+<!-- PWA / iOS home-screen metadata -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="MedTimer" />
+<meta name="theme-color" content="#0f1115" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --bg-elev: #171a21;
+    --accent: #d9a441;
+    --accent-dim: #7a5c26;
+    --text: #f2ece1;
+    --text-dim: #9aa0ab;
+    --danger: #c65a4e;
+    --ok: #4caf7d;
+    --ring-track: #262b35;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #app {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+    text-align: center;
+  }
+  .screen { width: 100%; max-width: 380px; display: none; flex-direction: column; align-items: center; gap: 22px; }
+  .screen.active { display: flex; }
+
+  h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; color: var(--text); margin: 0; }
+  p.subtitle { color: var(--text-dim); font-size: 0.9rem; margin: -12px 0 0; line-height: 1.4; }
+
+  /* --- Lock screen --- */
+  .pin-dots { display: flex; gap: 16px; margin: 8px 0; }
+  .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--text-dim); background: transparent; transition: background .15s, border-color .15s; }
+  .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+  .pin-dot.error { border-color: var(--danger); background: var(--danger); }
+  .keypad { display: grid; grid-template-columns: repeat(3, 72px); gap: 14px; margin-top: 8px; }
+  .key {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--bg-elev); color: var(--text);
+    border: 1px solid #262b35; font-size: 1.4rem; font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .key:active { background: #20242e; }
+  .key.ghost { background: transparent; border: none; }
+  .key.backspace { font-size: 1.1rem; color: var(--text-dim); }
+  #lockError { color: var(--danger); font-size: 0.85rem; min-height: 1.2em; }
+  #resetLink { color: var(--text-dim); font-size: 0.8rem; text-decoration: underline; margin-top: 6px; background: none; border: none; }
+
+  /* --- Setup screen --- */
+  .field-group { width: 100%; display: flex; flex-direction: column; gap: 16px; }
+  .field { width: 100%; background: var(--bg-elev); border: 1px solid #262b35; border-radius: 16px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; }
+  .field label { font-size: 0.95rem; color: var(--text-dim); }
+  .stepper { display: flex; align-items: center; gap: 14px; }
+  .stepper button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #333846; background: #1d212a; color: var(--text); font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+  .stepper button:active { background: #262b35; }
+  .stepper .val { min-width: 64px; font-variant-numeric: tabular-nums; font-size: 1.05rem; font-weight: 600; }
+  .primary-btn { width: 100%; padding: 16px; border-radius: 16px; border: none; background: var(--accent); color: #201607; font-size: 1.05rem; font-weight: 700; }
+  .primary-btn:active { background: #c4933a; }
+  .secondary-btn { width: 100%; padding: 14px; border-radius: 16px; border: 1px solid #333846; background: transparent; color: var(--text-dim); font-size: 0.95rem; }
+  .presets { display: flex; gap: 8px; width: 100%; }
+  .preset { flex: 1; padding: 10px 4px; border-radius: 12px; border: 1px solid #262b35; background: var(--bg-elev); color: var(--text-dim); font-size: 0.85rem; }
+  .preset.active { border-color: var(--accent); color: var(--accent); }
+
+  /* --- Session screen --- */
+  .ring-wrap { position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; }
+  svg.ring { transform: rotate(-90deg); width: 260px; height: 260px; }
+  .ring-track { fill: none; stroke: var(--ring-track); stroke-width: 10; }
+  .ring-progress { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.25s linear; }
+  .ring-center { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .time-remaining { font-size: 2.6rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .interval-count { color: var(--text-dim); font-size: 0.9rem; }
+  .status-pill { font-size: 0.75rem; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .session-controls { display: flex; gap: 14px; width: 100%; }
+  .round-btn { flex: 1; padding: 16px; border-radius: 16px; border: none; font-size: 1rem; font-weight: 700; }
+  .round-btn.pause { background: var(--bg-elev); color: var(--text); border: 1px solid #333846; }
+  .round-btn.stop { background: var(--danger); color: #fff; }
+  .round-btn.resume { background: var(--ok); color: #06251a; }
+
+  .wake-note { font-size: 0.72rem; color: var(--text-dim); max-width: 300px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOCK / SETUP PIN SCREEN -->
+  <div id="screen-lock" class="screen">
+    <h1 id="lockTitle">Enter PIN</h1>
+    <p class="subtitle" id="lockSubtitle">Unlock your meditation timer</p>
+    <div class="pin-dots" id="pinDots">
+      <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+    </div>
+    <div id="lockError"></div>
+    <div class="keypad" id="keypad"></div>
+    <button id="resetLink">Forgot PIN? Reset app</button>
+  </div>
+
+  <!-- SETUP SCREEN -->
+  <div id="screen-setup" class="screen">
+    <h1>Meditation Timer</h1>
+    <p class="subtitle">Set your total time and how often the bell should ring.</p>
+
+    <div class="field-group">
+      <div class="field">
+        <label>Total duration</label>
+        <div class="stepper">
+          <button data-target="total" data-step="-1">−</button>
+          <span class="val" id="totalVal">30 min</span>
+          <button data-target="total" data-step="1">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Interval bell</label>
+        <div class="stepper">
+          <button data-target="interval" data-step="-1">−</button>
+          <span class="val" id="intervalVal">1 min</span>
+          <button data-target="interval" data-step="1">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="presets">
+      <button class="preset" data-total="10" data-interval="1">10 / 1</button>
+      <button class="preset" data-total="20" data-interval="5">20 / 5</button>
+      <button class="preset active" data-total="30" data-interval="1">30 / 1</button>
+      <button class="preset" data-total="60" data-interval="10">60 / 10</button>
+    </div>
+
+    <button class="primary-btn" id="startBtn">Begin Session</button>
+    <p class="wake-note">Keep the app open and your phone face-up — the screen will stay awake and unlocked for the duration of your session so the bell rings on time.</p>
+  </div>
+
+  <!-- ACTIVE SESSION SCREEN -->
+  <div id="screen-session" class="screen">
+    <div class="status-pill" id="statusPill">In progress</div>
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 260 260">
+        <circle class="ring-track" cx="130" cy="130" r="115"></circle>
+        <circle class="ring-progress" id="ringProgress" cx="130" cy="130" r="115"></circle>
+      </svg>
+      <div class="ring-center">
+        <div class="time-remaining" id="timeRemaining">30:00</div>
+        <div class="interval-count" id="intervalCount">Bell 0 / 30</div>
+      </div>
+    </div>
+    <div class="session-controls">
+      <button class="round-btn pause" id="pauseBtn">Pause</button>
+      <button class="round-btn stop" id="stopBtn">End</button>
+    </div>
+  </div>
+
+  <!-- DONE SCREEN -->
+  <div id="screen-done" class="screen">
+    <h1>🧘 Session complete</h1>
+    <p class="subtitle" id="doneSummary">You meditated for 30 minutes.</p>
+    <button class="primary-btn" id="doneBtn">Done</button>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- Utility: view switching ---------------- */
+  const screens = {};
+  document.querySelectorAll(".screen").forEach(el => screens[el.id] = el);
+  function show(id) {
+    Object.values(screens).forEach(el => el.classList.remove("active"));
+    screens[id].classList.add("active");
+  }
+
+  /* ---------------- PIN lock ---------------- */
+  const PIN_HASH_KEY = "medtimer_pin_hash";
+  const UNLOCKED_KEY = "medtimer_unlocked"; // sessionStorage: cleared when app fully closes/reopens
+
+  async function sha256Hex(str) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  let pinBuffer = "";
+  let pinMode = "unlock"; // "unlock" | "setup1" | "setup2"
+  let pendingFirstPin = "";
+
+  const pinDotsEl = document.getElementById("pinDots");
+  const lockTitleEl = document.getElementById("lockTitle");
+  const lockSubtitleEl = document.getElementById("lockSubtitle");
+  const lockErrorEl = document.getElementById("lockError");
+  const resetLinkEl = document.getElementById("resetLink");
+
+  function renderPinDots(state) {
+    const dots = pinDotsEl.querySelectorAll(".pin-dot");
+    dots.forEach((d, i) => {
+      d.className = "pin-dot";
+      if (state === "error") { d.classList.add("error"); }
+      else if (i < pinBuffer.length) { d.classList.add("filled"); }
+    });
+  }
+
+  function buildKeypad() {
+    const keypad = document.getElementById("keypad");
+    const layout = ["1","2","3","4","5","6","7","8","9","","0","back"];
+    keypad.innerHTML = "";
+    layout.forEach(k => {
+      const btn = document.createElement("button");
+      if (k === "") { btn.className = "key ghost"; btn.disabled = true; }
+      else if (k === "back") { btn.className = "key backspace"; btn.textContent = "⌫"; btn.addEventListener("click", onBackspace); }
+      else { btn.className = "key"; btn.textContent = k; btn.addEventListener("click", () => onDigit(k)); }
+      keypad.appendChild(btn);
+    });
+  }
+
+  function onDigit(d) {
+    if (pinBuffer.length >= 4) return;
+    pinBuffer += d;
+    renderPinDots();
+    if (pinBuffer.length === 4) setTimeout(handlePinComplete, 120);
+  }
+  function onBackspace() {
+    pinBuffer = pinBuffer.slice(0, -1);
+    lockErrorEl.textContent = "";
+    renderPinDots();
+  }
+
+  async function handlePinComplete() {
+    if (pinMode === "setup1") {
+      pendingFirstPin = pinBuffer;
+      pinBuffer = "";
+      pinMode = "setup2";
+      lockTitleEl.textContent = "Confirm PIN";
+      lockSubtitleEl.textContent = "Enter it again to confirm";
+      renderPinDots();
+      return;
+    }
+    if (pinMode === "setup2") {
+      if (pinBuffer !== pendingFirstPin) {
+        lockErrorEl.textContent = "PINs didn't match — try again";
+        renderPinDots("error");
+        setTimeout(() => { pinBuffer = ""; pendingFirstPin = ""; pinMode = "setup1"; lockTitleEl.textContent = "Set a PIN"; lockSubtitleEl.textContent = "Choose a 4-digit PIN to protect the app"; renderPinDots(); }, 500);
+        return;
+      }
+      const hash = await sha256Hex(pinBuffer);
+      localStorage.setItem(PIN_HASH_KEY, hash);
+      sessionStorage.setItem(UNLOCKED_KEY, "1");
+      pinBuffer = "";
+      enterApp();
+      return;
+    }
+    // unlock mode
+    const hash = await sha256Hex(pinBuffer);
+    const stored = localStorage.getItem(PIN_HASH_KEY);
+    if (hash === stored) {
+      sessionStorage.setItem(UNLOCKED_KEY, "1");
+      pinBuffer = "";
+      enterApp();
+    } else {
+      lockErrorEl.textContent = "Incorrect PIN";
+      renderPinDots("error");
+      if (navigator.vibrate) navigator.vibrate(80);
+      setTimeout(() => { pinBuffer = ""; renderPinDots(); }, 450);
+    }
+  }
+
+  resetLinkEl.addEventListener("click", () => {
+    if (confirm("Reset PIN and clear all app data on this device?")) {
+      localStorage.clear();
+      sessionStorage.clear();
+      location.reload();
+    }
+  });
+
+  function initLock() {
+    buildKeypad();
+    const stored = localStorage.getItem(PIN_HASH_KEY);
+    const unlocked = sessionStorage.getItem(UNLOCKED_KEY) === "1";
+    if (!stored) {
+      pinMode = "setup1";
+      lockTitleEl.textContent = "Set a PIN";
+      lockSubtitleEl.textContent = "Choose a 4-digit PIN to protect the app";
+      resetLinkEl.classList.add("hidden");
+      show("screen-lock");
+    } else if (unlocked) {
+      enterApp();
+    } else {
+      pinMode = "unlock";
+      lockTitleEl.textContent = "Enter PIN";
+      lockSubtitleEl.textContent = "Unlock your meditation timer";
+      resetLinkEl.classList.remove("hidden");
+      show("screen-lock");
+    }
+  }
+
+  function enterApp() {
+    show("screen-setup");
+  }
+
+  /* ---------------- Setup screen ---------------- */
+  let totalMinutes = 30;
+  let intervalMinutes = 1;
+  const totalValEl = document.getElementById("totalVal");
+  const intervalValEl = document.getElementById("intervalVal");
+
+  function clampSteppers() {
+    totalMinutes = Math.max(1, Math.min(180, totalMinutes));
+    intervalMinutes = Math.max(1, Math.min(totalMinutes, intervalMinutes));
+    totalValEl.textContent = totalMinutes + " min";
+    intervalValEl.textContent = intervalMinutes + " min";
+  }
+  clampSteppers();
+
+  document.querySelectorAll(".stepper button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.target;
+      const step = parseInt(btn.dataset.step, 10);
+      if (target === "total") totalMinutes += step;
+      else intervalMinutes += step;
+      clampSteppers();
+      document.querySelectorAll(".preset").forEach(p => p.classList.remove("active"));
+    });
+  });
+
+  document.querySelectorAll(".preset").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".preset").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      totalMinutes = parseInt(btn.dataset.total, 10);
+      intervalMinutes = parseInt(btn.dataset.interval, 10);
+      clampSteppers();
+    });
+  });
+
+  /* ---------------- Audio: generated bell ---------------- */
+  let audioCtx = null;
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  // Bell-like tone: fundamental + a couple of inharmonic overtones with a long decay envelope.
+  function playBell({ long = false } = {}) {
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0, now);
+    master.connect(ctx.destination);
+
+    const duration = long ? 3.2 : 1.6;
+    const peak = long ? 0.5 : 0.4;
+    master.gain.linearRampToValueAtTime(peak, now + 0.015);
+    master.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+    const partials = [
+      { ratio: 1.0, gain: 1.0 },
+      { ratio: 2.4, gain: 0.55 },
+      { ratio: 3.9, gain: 0.28 },
+      { ratio: 5.4, gain: 0.14 }
+    ];
+    const fundamental = long ? 220 : 330;
+
+    partials.forEach(p => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(fundamental * p.ratio, now);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(p.gain, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + duration * (0.8 / p.ratio + 0.3));
+      osc.connect(g);
+      g.connect(master);
+      osc.start(now);
+      osc.stop(now + duration + 0.1);
+    });
+  }
+
+  /* ---------------- Wake Lock ---------------- */
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLock = await navigator.wakeLock.request("screen");
+      }
+    } catch (e) { /* not supported / denied — silently continue */ }
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible" && sessionActive) {
+      await requestWakeLock();
+    }
+  });
+
+  /* ---------------- Session engine ---------------- */
+  let sessionActive = false;
+  let paused = false;
+  let startTime = 0;
+  let pausedAt = 0;
+  let pausedAccum = 0;
+  let totalMs = 0;
+  let intervalMs = 0;
+  let nextDingIndex = 1;
+  let totalDings = 0;
+  let tickHandle = null;
+
+  const timeRemainingEl = document.getElementById("timeRemaining");
+  const intervalCountEl = document.getElementById("intervalCount");
+  const ringProgress = document.getElementById("ringProgress");
+  const statusPillEl = document.getElementById("statusPill");
+  const pauseBtn = document.getElementById("pauseBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const startBtn = document.getElementById("startBtn");
+  const doneBtn = document.getElementById("doneBtn");
+  const doneSummaryEl = document.getElementById("doneSummary");
+
+  const RADIUS = 115;
+  const CIRC = 2 * Math.PI * RADIUS;
+  ringProgress.style.strokeDasharray = CIRC.toFixed(2);
+
+  function fmt(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m + ":" + String(r).padStart(2, "0");
+  }
+
+  function startSession() {
+    totalMs = totalMinutes * 60 * 1000;
+    intervalMs = intervalMinutes * 60 * 1000;
+    totalDings = Math.floor(totalMs / intervalMs);
+    nextDingIndex = 1;
+    pausedAccum = 0;
+    paused = false;
+    sessionActive = true;
+
+    ensureAudioCtx();
+    playBell({ long: false }); // start chime
+    requestWakeLock();
+
+    startTime = Date.now();
+    show("screen-session");
+    statusPillEl.textContent = "In progress";
+    pauseBtn.textContent = "Pause";
+    tick();
+    tickHandle = setInterval(tick, 250);
+  }
+
+  function tick() {
+    if (paused) return;
+    const now = Date.now();
+    const elapsed = now - startTime - pausedAccum;
+    const remaining = totalMs - elapsed;
+
+    if (elapsed >= nextDingIndex * intervalMs && nextDingIndex <= totalDings) {
+      // Catch up in case of throttling: play once, then advance past any missed windows
+      playBell({ long: false });
+      if (navigator.vibrate) navigator.vibrate(120);
+      while (elapsed >= nextDingIndex * intervalMs && nextDingIndex <= totalDings) {
+        nextDingIndex++;
+      }
+    }
+
+    if (remaining <= 0) {
+      finishSession();
+      return;
+    }
+
+    timeRemainingEl.textContent = fmt(remaining);
+    const ringsSoFar = Math.min(totalDings, Math.floor(elapsed / intervalMs));
+    intervalCountEl.textContent = "Bell " + ringsSoFar + " / " + totalDings;
+    const frac = Math.max(0, Math.min(1, remaining / totalMs));
+    ringProgress.style.strokeDashoffset = (CIRC * (1 - frac)).toFixed(2);
+  }
+
+  function togglePause() {
+    if (!sessionActive) return;
+    if (!paused) {
+      paused = true;
+      pausedAt = Date.now();
+      statusPillEl.textContent = "Paused";
+      pauseBtn.textContent = "Resume";
+    } else {
+      paused = false;
+      pausedAccum += Date.now() - pausedAt;
+      statusPillEl.textContent = "In progress";
+      pauseBtn.textContent = "Pause";
+    }
+  }
+
+  function finishSession() {
+    clearInterval(tickHandle);
+    tickHandle = null;
+    sessionActive = false;
+    paused = false;
+    releaseWakeLock();
+    playBell({ long: true }); // closing bell
+    timeRemainingEl.textContent = "0:00";
+    doneSummaryEl.textContent = "You meditated for " + totalMinutes + " minute" + (totalMinutes === 1 ? "" : "s") + " with " + totalDings + " bell" + (totalDings === 1 ? "" : "s") + ".";
+    setTimeout(() => show("screen-done"), 600);
+  }
+
+  function endSessionEarly() {
+    clearInterval(tickHandle);
+    tickHandle = null;
+    sessionActive = false;
+    paused = false;
+    releaseWakeLock();
+    show("screen-setup");
+  }
+
+  startBtn.addEventListener("click", startSession);
+  pauseBtn.addEventListener("click", togglePause);
+  stopBtn.addEventListener("click", () => {
+    if (confirm("End this session early?")) endSessionEarly();
+  });
+  doneBtn.addEventListener("click", () => show("screen-setup"));
+
+  /* ---------------- Boot ---------------- */
+  initLock();
+
+  /* ---------------- Service worker ---------------- */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
