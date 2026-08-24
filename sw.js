@@ -1,4 +1,4 @@
-const CACHE_NAME = "medtimer-cache-v1";
+const CACHE_NAME = "medtimer-cache-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,9 +24,34 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Cache-first for app shell, network-first fallback for anything else.
+// Network-first for the app shell (HTML/navigations), so an update deployed
+// on Vercel shows up the very next time the app is opened with a connection.
+// Falls back to the cached copy when offline. Static assets (icons,
+// manifest) rarely change, so those stay cache-first for speed.
+const SHELL_PATHS = new Set(["./", "/", "./index.html", "/index.html"]);
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+
+  const url = new URL(event.request.url);
+  const isShell =
+    event.request.mode === "navigate" ||
+    SHELL_PATHS.has(url.pathname) ||
+    url.pathname.endsWith("/index.html");
+
+  if (isShell) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

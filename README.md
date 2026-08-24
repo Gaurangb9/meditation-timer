@@ -56,6 +56,22 @@ redeploys — no repeat setup needed.
 3. Launch it from the home screen icon like any app. The first time, it'll
    ask you to set a 4-digit PIN — that's the lock screen for the app.
 
+## Making future changes
+
+Vercel redeploys automatically whenever the `main` branch on your GitHub repo
+changes — no dashboard clicks needed. To make an edit:
+
+1. On github.com, open the file you want to change (e.g. `index.html`),
+   click the pencil ("Edit this file") icon, make the change, and commit
+   directly to `main`. (Or send me the change and I'll hand you the updated
+   file to re-upload the same way.)
+2. Vercel picks it up and redeploys within ~30 seconds — check the
+   "Deployments" tab on vercel.com if you want to watch it happen.
+3. On your iPhone, just reopen the app with an internet connection. The
+   service worker checks for an updated app shell on every load, so the new
+   version replaces the old one automatically — no reinstall, no removing
+   and re-adding the home screen icon.
+
 ## Notes on iOS limits (so expectations are set correctly)
 
 - **Keep the app open and phone face-up during a session.** iOS suspends

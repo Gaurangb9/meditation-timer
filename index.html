@@ -462,7 +462,7 @@
     sessionActive = true;
 
     ensureAudioCtx();
-    playBell({ long: false }); // start chime
+    playBell({ long: true }); // start chime — longer, to clearly mark the beginning
     requestWakeLock();
 
     startTime = Date.now();
